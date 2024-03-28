@@ -1,19 +1,21 @@
+# Define a universal gameplay command, as a single object of class Command
+class Command:
+    def __init__(self, userID, command, cmd_data):
+        self.userID = userID  #player = target of cmd
+        self.command = command  #command = an item from a command dictionary
+        self.cmd_data = cmd_data  #cmd_data = [] a list of key:values required for the command to execute
+
+# Define a game
 class Game:
     def __init__(self, id):
-        self.p1Went = False
-        self.p2Went = False
         self.ready = False
-        self.id = id
-        self.moves = [None, None]
-        self.wins = [0,0]
-        self.ties = 0
+        self.id = id   #An ID for the game to allow multiple games in parallel
+        self.wins = [0,0]   #Example game attributes to maintain
+        self.ties = 0   #Example game attributes to maintain
+        self.moves = 0
 
     def get_player_move(self, p):
-        """
-        :param p: [0,1]
-        :return: Move
-        """
-        return self.moves[p]
+        return self.moves
 
     def play(self, player, move):
         self.moves[player] = move
@@ -25,30 +27,11 @@ class Game:
     def connected(self):
         return self.ready
 
-    def bothWent(self):
-        return self.p1Went and self.p2Went
-
     def winner(self):
-
-        p1 = self.moves[0].upper()[0]
-        p2 = self.moves[1].upper()[0]
-
-        winner = -1
-        if p1 == "R" and p2 == "S":
-            winner = 0
-        elif p1 == "S" and p2 == "R":
-            winner = 1
-        elif p1 == "P" and p2 == "R":
-            winner = 0
-        elif p1 == "R" and p2 == "P":
-            winner = 1
-        elif p1 == "S" and p2 == "P":
-            winner = 0
-        elif p1 == "P" and p2 == "S":
-            winner = 1
-
+        #determine who is the winner
+        winner = True
         return winner
 
-    def resetWent(self):
+    def resetTurn(self):
         self.p1Went = False
         self.p2Went = False

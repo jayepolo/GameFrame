@@ -1,163 +1,126 @@
-import pygame
+import pygame as pg
 from network import Network
-import pickle
-pygame.font.init()
+from game import Command
+from network import Network, network_check
+from client_threads import send_loop, recv_loop
+import threading
+import queue
+import time
 
 width = 700
 height = 700
-win = pygame.display.set_mode((width, height))
-pygame.display.set_caption("Client")
+win = pg.display.set_mode((width, height))
+pg.display.set_caption("Client")
 
+send_queue = queue.Queue()
+recv_queue = queue.Queue()
+ack_queue = queue.Queue()
+lock = threading.Lock()
+send_lock = threading.Lock()
+recv_lock = threading.Lock()
+proc_lock = threading.Lock()
 
-class Button:
-    def __init__(self, text, x, y, color):
-        self.text = text
-        self.x = x
-        self.y = y
-        self.color = color
-        self.width = 150
-        self.height = 100
-
-    def draw(self, win):
-        pygame.draw.rect(win, self.color, (self.x, self.y, self.width, self.height))
-        font = pygame.font.SysFont("comicsans", 40)
-        text = font.render(self.text, 1, (255,255,255))
-        win.blit(text, (self.x + round(self.width/2) - round(text.get_width()/2), self.y + round(self.height/2) - round(text.get_height()/2)))
-
-    def click(self, pos):
-        x1 = pos[0]
-        y1 = pos[1]
-        if self.x <= x1 <= self.x + self.width and self.y <= y1 <= self.y + self.height:
-            return True
-        else:
-            return False
-
-
-def redrawWindow(win, game, p):
-    win.fill((128,128,128))
-
-    if not(game.connected()):
-        font = pygame.font.SysFont("comicsans", 80)
-        text = font.render("Waiting for Player...", 1, (255,0,0), True)
-        win.blit(text, (width/2 - text.get_width()/2, height/2 - text.get_height()/2))
-    else:
-        font = pygame.font.SysFont("comicsans", 60)
-        text = font.render("Your Move", 1, (0, 255,255))
-        win.blit(text, (80, 200))
-
-        text = font.render("Opponents", 1, (0, 255, 255))
-        win.blit(text, (380, 200))
-
-        move1 = game.get_player_move(0)
-        move2 = game.get_player_move(1)
-        if game.bothWent():
-            text1 = font.render(move1, 1, (0,0,0))
-            text2 = font.render(move2, 1, (0, 0, 0))
-        else:
-            if game.p1Went and p == 0:
-                text1 = font.render(move1, 1, (0,0,0))
-            elif game.p1Went:
-                text1 = font.render("Locked In", 1, (0, 0, 0))
-            else:
-                text1 = font.render("Waiting...", 1, (0, 0, 0))
-
-            if game.p2Went and p == 1:
-                text2 = font.render(move2, 1, (0,0,0))
-            elif game.p2Went:
-                text2 = font.render("Locked In", 1, (0, 0, 0))
-            else:
-                text2 = font.render("Waiting...", 1, (0, 0, 0))
-
-        if p == 1:
-            win.blit(text2, (100, 350))
-            win.blit(text1, (400, 350))
-        else:
-            win.blit(text1, (100, 350))
-            win.blit(text2, (400, 350))
-
-        for btn in btns:
-            btn.draw(win)
-
-    pygame.display.update()
-
-
-btns = [Button("Rock", 50, 500, (0,0,0)), Button("Scissors", 250, 500, (255,0,0)), Button("Paper", 450, 500, (0,255,0))]
 def main():
     run = True
-    clock = pygame.time.Clock()
+    clock = pg.time.Clock()
     n = Network()
-    player = int(n.getP())
-    print("You are player", player)
+    user = ""
+    send_queue.put(Command("NEW", "USER", "Client join request"))  #Request a formal User object from Server
+    print("Queues: " + str(send_queue.qsize())+ str(ack_queue.qsize())+ str(recv_queue.qsize()))
 
+    HBT_time = time.time() + 5
+    #print(f"HBT_time = {HBT_time}")
+
+    #Start thread to send and receive Socket messages
+    recv_thread = threading.Thread(target=recv_loop, args=(n, send_queue, recv_queue, ack_queue), daemon=True).start() #args=(netconn,), 
+    send_thread = threading.Thread(target=send_loop, args=(n, send_queue, recv_queue, ack_queue), daemon=True).start() #args=(netconn,), 
+
+    #Add a small section to get a User state before moving into the while run section
+    print("Waiting for User assignment from Server")
+    while user != False:
+        process_queues
+    print(f"Hello {user}")
+
+    print("Starting Client Main() Loop")  #All Client processing happens within this loop
     while run:
         clock.tick(60)
+        #game_events()
+        process_queues()
+        if network_check(user.userID, HBT_time):
+            HBT_time = time.time() + 5
         try:
-            game = n.send("get")
+            #game_udate()
+            pass
         except:
             run = False
-            print("Couldn't get game")
+            print("Something failed!?")
             break
 
-        if game.bothWent():
-            redrawWindow(win, game, player)
-            pygame.time.delay(500)
-            try:
-                game = n.send("reset")
-            except:
-                run = False
-                print("Couldn't get game")
-                break
+        #Execute various gameplay activities here, refreshing pygrame afterwards
+        #pygame.display.update()
 
-            font = pygame.font.SysFont("comicsans", 90)
-            if (game.winner() == 1 and player == 1) or (game.winner() == 0 and player == 0):
-                text = font.render("You Won!", 1, (255,0,0))
-            elif game.winner() == -1:
-                text = font.render("Tie Game!", 1, (255,0,0))
+        for event in pg.event.get():
+            if event.type == pg.QUIT:
+                run = False
+                pg.quit()
+
+            if event.type == pg.MOUSEBUTTONDOWN:
+                #check for mouse clicks on teh game GUI
+                #and react accordingly
+                pass
+
+        #Refresh the gameplay GUI as needed
+        #redrawWindow(win, game, player)
+        pg.display.update()
+
+def network_check(userID, HBT_time):
+    global send_lock
+    global send_queue
+    print(".", end='', flush=True)
+    #print(f"Is {time.time()} >= {HBT_time}??")
+    if time.time() >= HBT_time:
+        print("H")
+        hbt_cmd = Command(userID, "HBT", "Ready to play")
+        send_lock.acquire()
+        send_queue.put(hbt_cmd)  #Or use the Send Queue to send the command...
+        send_lock.release()
+        HBT_time = time.time() + 5 #Pause 5 seconds until next heartbeat / This delay is blocking (bad)
+        #print(time.time(), HBT_time)
+        return True
+
+def process_queues():
+        global user
+        #Now process recv_queue here
+        print("\nP", end='', flush=True)
+        proc_lock.acquire()
+        if ack_queue.qsize()>0:
+            print("Processing ack_queue: " + str(ack_queue.qsize()))
+            pop_cmd = ack_queue.get()
+            if type(pop_cmd) == Command:  #Validate msg is well formed
+                #*** Insert code to process ACK messages ***
+                pass
             else:
-                text = font.render("You Lost...", 1, (255, 0, 0))
+                print("!", end='', flush=True)
+            pop_cmd = ""
+        if recv_queue.qsize()>0:
+            print("Processing recv_queue: " + str(ack_queue.qsize()))
+            pop_cmd = recv_queue.get()
+            if type(pop_cmd) == Command:  #Validate msg is well formed
+                send_queue.put(Command(pop_cmd.userID, "ACK", "Command " + pop_cmd.command + " received"))
+                #*** Additional processing of CMD messages & Gameplay ***
+                if pop_cmd.command == "USER":
+                    print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
+                    user = pop_cmd.cmd_data
+                pass
+            else:
+                print("!", end='', flush=True)
+            pop_cmd = ""
+        #wrap it up
+        print(str(send_queue.qsize()), end='', flush=True)
+        print(str(ack_queue.qsize()), end='', flush=True)
+        print(str(recv_queue.qsize()), end='', flush=True)
+        print("p\n", end='', flush=True)
 
-            win.blit(text, (width/2 - text.get_width()/2, height/2 - text.get_height()/2))
-            pygame.display.update()
-            pygame.time.delay(2000)
+        proc_lock.release()
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                run = False
-                pygame.quit()
-
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                pos = pygame.mouse.get_pos()
-                for btn in btns:
-                    if btn.click(pos) and game.connected():
-                        if player == 0:
-                            if not game.p1Went:
-                                n.send(btn.text)
-                        else:
-                            if not game.p2Went:
-                                n.send(btn.text)
-
-        redrawWindow(win, game, player)
-
-def menu_screen():
-    run = True
-    clock = pygame.time.Clock()
-
-    while run:
-        clock.tick(60)
-        win.fill((128, 128, 128))
-        font = pygame.font.SysFont("comicsans", 60)
-        text = font.render("Click to Play!", 1, (255,0,0))
-        win.blit(text, (100,200))
-        pygame.display.update()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                run = False
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                run = False
-
-    main()
-
-while True:
-    menu_screen()
+main()

@@ -1,9 +1,10 @@
 import socket
 from _thread import *
 import pickle
-from game import Game
+from user import User
+from game import Game, Command
 
-server = "10.11.250.207"
+server = "localhost"
 port = 5555
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -13,64 +14,44 @@ try:
 except socket.error as e:
     str(e)
 
-s.listen(2)
+s.listen(5)
 print("Waiting for a connection, Server Started")
 
-connected = set()
-games = {}
-idCount = 0
+#connected = set()
+users = []
 
+def threaded_client(user, conn):
+    conn.send(pickle.dumps(Command(user.userID, "ACK", "Welcome to the game!")))
+    #conn.send(pickle.dumps(Command(user.userID, "USER", user)))
+    print(f"User_Thread established for {user.userID}")
 
-def threaded_client(conn, p, gameId):
-    global idCount
-    conn.send(str.encode(str(p)))
-
-    reply = ""
     while True:
         try:
-            data = conn.recv(4096).decode()
-
-            if gameId in games:
-                game = games[gameId]
-
-                if not data:
-                    break
-                else:
-                    if data == "reset":
-                        game.resetWent()
-                    elif data != "get":
-                        game.play(p, data)
-
-                    conn.sendall(pickle.dumps(game))
-            else:
+            data = pickle.loads(conn.recv(4096))
+            if not data:
+                print(f"User connection failed for {user.userID}")
                 break
+            else:
+                print(data)
+                if data == type(Command):
+                    if data.command == "USER":
+                        conn.send(pickle.dumps(Command(user.userID, "USER", user)))
+                    if data.command == "HBT":
+                        conn.send(pickle.dumps(Command(user.userID, "ACK", "Received HBT")))
+                        print("Sent HBT ACK")
         except:
             break
-
     print("Lost connection")
+    #Remove User and close down the connection
     try:
-        del games[gameId]
-        print("Closing Game", gameId)
+        del users[user]
+        print(f"Deleting user {user}")   #Might want to mark them as inactive, instead
     except:
         pass
-    idCount -= 1
     conn.close()
 
-
-
 while True:
-    conn, addr = s.accept()
-    print("Connected to:", addr)
-
-    idCount += 1
-    p = 0
-    gameId = (idCount - 1)//2
-    if idCount % 2 == 1:
-        games[gameId] = Game(gameId)
-        print("Creating a new game...")
-    else:
-        games[gameId].ready = True
-        p = 1
-
-
-    start_new_thread(threaded_client, (conn, p, gameId))
+    conn, addr = s.accept()  #someone connects via Socket
+    user = User()  #server creates a user object
+    print(f"{addr} connected as {user.userID}")
+    start_new_thread(threaded_client, (user, conn))   #Create User Thread, passing user object to it
