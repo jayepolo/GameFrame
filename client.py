@@ -1,12 +1,14 @@
 import pygame as pg
 from network import Network
-from game import Command
 from network import Network, network_check
+from game import Command
+from user import User
 from client_threads import send_loop, recv_loop
 import threading
 import queue
 import time
 
+version = "0.1"
 width = 700
 height = 700
 win = pg.display.set_mode((width, height))
@@ -21,38 +23,54 @@ recv_lock = threading.Lock()
 proc_lock = threading.Lock()
 
 def main():
+    print(f"Starting GameFrame Client v{version}")
     run = True
     clock = pg.time.Clock()
-    n = Network()
-    user = ""
-    send_queue.put(Command("NEW", "USER", "Client join request"))  #Request a formal User object from Server
-    print("Queues: " + str(send_queue.qsize())+ str(ack_queue.qsize())+ str(recv_queue.qsize()))
-
-    HBT_time = time.time() + 5
-    #print(f"HBT_time = {HBT_time}")
+    
+    #Establish Server Socket connection
+    #Currently this instantiates a User object.  
+    #Probably should not couple that to Network connection?  TBD
+    n = Network() # Establish connection to Server
 
     #Start thread to send and receive Socket messages
     recv_thread = threading.Thread(target=recv_loop, args=(n, send_queue, recv_queue, ack_queue), daemon=True).start() #args=(netconn,), 
     send_thread = threading.Thread(target=send_loop, args=(n, send_queue, recv_queue, ack_queue), daemon=True).start() #args=(netconn,), 
 
-    #Add a small section to get a User state before moving into the while run section
-    print("Waiting for User assignment from Server")
-    while user != False:
-        process_queues
-    print(f"Hello {user}")
+    user = User()  #Instantiate a generic user locally
+    playing = False  #Server has accepted User to play
+    print(f"Sending JOIN request to Server")
+    print(f"{user.userID} join request")  #Request a formal User object from Server
+    print("Queues: " + str(send_queue.qsize())+ str(ack_queue.qsize())+ str(recv_queue.qsize()))
+    send_queue.put(Command(user.userID, "JOIN", user.userID + " join request"))  #Request a formal User object from Server
 
-    print("Starting Client Main() Loop")  #All Client processing happens within this loop
-    while run:
+    #user = n.user #Save User object   
+
+    #ISSUE!!  
+    #This loop must be inside the While Run, so that the queues are being processed!!!
+    #while not playing:
+        #Loop here until the User has joined the Server's game
+    #    time.sleep(0.5)
+    #    print(playing)  #("o", end='', flush=True)
+
+    #Contact our web support at  866-755-2680.  Anthem
+
+    HBT_time = time.time() + 5
+    print("Starting main() loop")  #All Client processing happens within this loop
+    while run:  #Process certain game activities
         clock.tick(60)
         #game_events()
+        
+        #Check and process Queues 60 times per second
         process_queues()
-        if network_check(user.userID, HBT_time):
-            HBT_time = time.time() + 5
+        
+        HBT_time = network_check(user, HBT_time)
+
         try:
             #game_udate()
             pass
         except:
-            run = False
+            run = False   #Should enhance to have a "playing" state, vs this run state 
+                            #Eg always 'run' but sometimes 'play' but bever bail out completely.
             print("Something failed!?")
             break
 
@@ -73,53 +91,73 @@ def main():
         #redrawWindow(win, game, player)
         pg.display.update()
 
-def network_check(userID, HBT_time):
+#Try passing in user instead of just userID, so can update UI with user.name
+def network_check(user, HBT_time):
     global send_lock
     global send_queue
-    print(".", end='', flush=True)
-    #print(f"Is {time.time()} >= {HBT_time}??")
     if time.time() >= HBT_time:
-        print("H")
-        hbt_cmd = Command(userID, "HBT", "Ready to play")
+        hbt_cmd = Command(user.userID, "HBT", "Ready to play")
         send_lock.acquire()
         send_queue.put(hbt_cmd)  #Or use the Send Queue to send the command...
         send_lock.release()
-        HBT_time = time.time() + 5 #Pause 5 seconds until next heartbeat / This delay is blocking (bad)
-        #print(time.time(), HBT_time)
-        return True
+        return HBT_time + 5
+    else:
+        return HBT_time        
 
 def process_queues():
-        global user
-        #Now process recv_queue here
-        print("\nP", end='', flush=True)
+        global user, playing
+        print(".", end='', flush=True)
         proc_lock.acquire()
         if ack_queue.qsize()>0:
-            print("Processing ack_queue: " + str(ack_queue.qsize()))
+            #print("\nP", end='', flush=True)
+            #print("Processing ack_queue of: " + str(ack_queue.qsize()) + "\n")
             pop_cmd = ack_queue.get()
+            print(f"\n{str(pop_cmd.command)}: {pop_cmd.cmd_data}")
             if type(pop_cmd) == Command:  #Validate msg is well formed
                 #*** Insert code to process ACK messages ***
+                if str(pop_cmd.cmd_data[:4]) == "JOIN":
+                    print(pop_cmd.cmd_data)
+                    playing = True
                 pass
             else:
                 print("!", end='', flush=True)
             pop_cmd = ""
         if recv_queue.qsize()>0:
-            print("Processing recv_queue: " + str(ack_queue.qsize()))
             pop_cmd = recv_queue.get()
-            if type(pop_cmd) == Command:  #Validate msg is well formed
-                send_queue.put(Command(pop_cmd.userID, "ACK", "Command " + pop_cmd.command + " received"))
+            #if type(pop_cmd) == Command:  #Validate msg is well formed
+            print(f"\n{str(pop_cmd.command)}: {pop_cmd.cmd_data}")
+            send_queue.put(Command(pop_cmd.userID, "ACK", "Command " + pop_cmd.command + " received"))
                 #*** Additional processing of CMD messages & Gameplay ***
-                if pop_cmd.command == "USER":
-                    print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
-                    user = pop_cmd.cmd_data
-                pass
+            if pop_cmd.command == "USER":
+                user = pop_cmd.cmd_data
+                pg.display.set_caption("Client - " + user.name)
+                pg.display.update
+            elif pop_cmd.command == "ARMIES":
+                print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
+                # WHAT OBJECT STORES ARMIES TO BE PLACED?
+            elif pop_cmd.command == "GAME":
+                print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
+                # NEED OBJECTS FOR THE GAME
+            elif pop_cmd.command == "TURN":
+                print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
+                # NEED TURN OBJECT
+            elif pop_cmd.command == "WORLD":
+                print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
+                # NEED OBJECT FOR THE WORLD (Collection of Territories and Cards??)
+            elif pop_cmd.command == "TERRITORY":
+                print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
+                # NEED OBJECT FOR A TERRITORY (Collection of Territories and Cards??)
+
+
+
             else:
                 print("!", end='', flush=True)
             pop_cmd = ""
         #wrap it up
-        print(str(send_queue.qsize()), end='', flush=True)
-        print(str(ack_queue.qsize()), end='', flush=True)
-        print(str(recv_queue.qsize()), end='', flush=True)
-        print("p\n", end='', flush=True)
+        # print(str(send_queue.qsize()), end='', flush=True)
+        # print(str(ack_queue.qsize()), end='', flush=True)
+        # print(str(recv_queue.qsize()), end='', flush=True)
+        # print("p\n", end='', flush=True)
 
         proc_lock.release()
 

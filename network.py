@@ -8,19 +8,31 @@ class Network:
     def __init__(self):
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server = "localhost"
-        self.port = 5555
+        self.port = 5556
         self.addr = (self.server, self.port)
-        self.server_obj = self.connect()
+        #self.server_obj = self.connect()
+        #self.user = self.connect()
+        self.connect()
 
     def connect(self):
         try:
-            print("Connecting to Server")
-            self.client.connect(self.addr)
+            print(f"Connecting to Server {self.addr}")
+            self.client.connect(self.addr)  #Establish Socket connection to Server
             print("Connected")
             data = pickle.loads(self.client.recv(2048))  #Receive ACK from Server
-            print(f"{data} {data.command}")  #Receive ACK from Server
-            #return pickle.loads(self.client.recv(2048))  #Rceive USER object from Server
-            return data
+            print(f"{data.command}: {data.cmd_data}") 
+
+            #Passively waiting for server to send a user object.  
+            #Switch this to actively hanlde user request?
+            #Exist this connection routine
+            #Then back in the client setup code, Send a User Command to Server asking for user object object?
+            #Means I will not get the Server assigned user.name, unless of course I do not update it
+            
+            #user_cmd = pickle.loads(self.client.recv(2048))  #Receive USER object from Server
+            #user = user_cmd.cmd_data
+            #print(f"{user_cmd.command} : {user_cmd.cmd_data}")
+            #print(user.name)
+            return #user
         except:
             print(f"Connection to Server failed")
             return False
