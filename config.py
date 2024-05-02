@@ -1,0 +1,2 @@
+users = []
+send_queues = []
