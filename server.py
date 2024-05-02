@@ -1,74 +1,87 @@
+import config
 import socket
-from _thread import *
+#from _thread import *
+import threading
 import pickle
+import queue
+import time
 from user import User
 from game import Game, Command
+from server_threads import send_loop, recv_loop
 
-server = "localhost"
-port = 5556
 
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+send_queue = queue.Queue()
+recv_queue = queue.Queue()
+send_lock = threading.Lock()
+recv_lock = threading.Lock()
+proc_lock = threading.Lock()
 
-try:
-    s.bind((server, port))
-except socket.error as e:
-    str(e)
+def socket_mgr():
+    global users, send_queue, recv_queue, ack_queue, send_queues
 
-s.listen(5)
-print("Waiting for connections, Server Started")
-
-#connected = set()
-users = []
-
-def threaded_client(user, conn):
-    conn.send(pickle.dumps(Command(user.userID, "ACK", "Welcome to Conq!")))
-    print(f"threaded_client established for {user.name}")
-
-    while True:
-        try:
-            #Continually check for data from client and handle accordingly:
-            data = pickle.loads(conn.recv(4096))
-            if not data:
-                print(f"User connection failed for {user.name}")
-                break
-            else:
-                if type(data) == Command:
-                    if data.command == "HBT":
-                        conn.send(pickle.dumps(Command(user.userID, "ACK", "Server acks the HBT")))
-                        print("Sent HBT ACK")
-                    if data.command == "JOIN":
-                        #Add user to active players?  
-                        #Already managing connection based userID list
-                        #So just reply ACK without doing more
-                        conn.send(pickle.dumps(Command(user.userID, "ACK", "JOIN: You have joined the game")))
-                        #Also update uuid and send back a USER command to user
-                        conn.send(pickle.dumps(Command(user.userID, "USER", user)))
-                    if data.command == "USER":
-                        conn.send(pickle.dumps(Command(user.userID, "USER", user)))
-        except:
-            #If socket lost, bail on this threaded_client connection entirely
-            break
-    print("Lost connection")
-    #Remove User and close down the connection
+    #Listen/wait for Socket connections
+    server = "localhost"
+    port = 5556
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        print(f"Deleting user {user.name}")   #Might want to mark them as inactive, instead
-        users.remove(user)
-        for u in users:
-            print(f"   {u.name}")
-    except:
-        print("Deleting User Exception!")
-        pass
-    conn.close()
+        s.bind((server, port))
+    except socket.error as e:
+        str(e)
+    s.listen(5)
+    print("Listening for connections, Server Started")
+    total_conns = 0
+    while True:  
+        conn, addr = s.accept()  #Blocking wait for user to connect via Socket
+        total_conns += 1
+        print("Connecting a user...")
+        user = User()  #Server creates a user object
+        config.users.append(user)  #Add user to list of users
+        config.users[len(config.users)-1].name = "Player " + str(total_conns)  #Name the user
+        unique_send_queue = queue.Queue()
+        config.send_queues.append((user.userID, unique_send_queue, conn, addr))
 
-while True:  #Listen for connections BLOCKING => cannot run gameplay here | Spin up Connection_Manager thread
-    print("Listening...")  
-    conn, addr = s.accept()  #someone connects via Socket
-    print("Connecting...")
-    user = User()  #server creates a user object
-    users.append(user)
-    users[len(users)-1].name = "Player " + str(len(users))
-    #print(f"User {user.userID} created as {user.name}")
-    print("Active Players:")
-    for u in users:
-        print(f"   {u.name}")
-    start_new_thread(threaded_client, (user, conn))   #Create User Thread, passing user object to it
+        print("send_loop and recv_loop threads started for: " + user.name)
+        recv_thread = threading.Thread(target=recv_loop, args=(conn, user, unique_send_queue, recv_queue), daemon=True).start()
+        send_thread = threading.Thread(target=send_loop, args=(conn, user, unique_send_queue, recv_queue), daemon=True).start()
+
+        unique_send_queue.put(Command(user.userID, "ACK", "Welcome to Conq!"))
+
+        print("Active Players:")
+        for u in config.users:
+            i = config.users.index(u)
+            print(f"   {u.name} - {config.send_queues[i][0]} {config.send_queues[i][3][0]}:{config.send_queues[i][3][1]}")
+
+def process_queues():
+    #Data in a queue feels 'pre-certified' as okay to process without more checks
+    proc_lock =  threading.Lock()
+    proc_lock.acquire()
+    #print(str(recv_queue.qsize()), end='', flush=True)
+    print(".", end='', flush=True)
+    if recv_queue.qsize()>0:
+        pop_cmd = recv_queue.get()
+        # if type(pop_cmd) == Command:  #Validate msg is well formed
+        #     send_queue.put(Command(pop_cmd.userID, "ACK", "Command " + pop_cmd.command + " received"))  #Or use the Send Queue to send the command...
+        #     #*** Additional processing of CMD messages & Gameplay ***
+        # else:
+        #     print("!recv_q", end='', flush=True)
+        pop_cmd = ""
+        print("r", end='', flush=True)
+    proc_lock.release()
+
+#Start a thread to send and receive Socket messages
+#socketmgr_thread = threading.Thread(target=socket_mgr, args=(send_queue, recv_queue, ack_queue), daemon=True).start() #args=(netconn,), 
+socketmgr_thread = threading.Thread(target=socket_mgr, args=(), daemon=True).start() 
+
+while True:
+    #All gameplay will happen here
+    time.sleep(1)
+
+    #process queues here!!
+    process_queues()
+
+
+    #Test out sending messages to users
+    #1:1 and 1:Many
+    #Typ format = conn.send(pickle.dumps(Command(user.userID, "ACK", "Welcome to Conq!")))
+    #But here ^^ conn is not known at the Server, only SockerMgr
+    #Need to lookup conn based on send_queues[]

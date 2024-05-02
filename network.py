@@ -33,6 +33,9 @@ class Network:
             #print(f"{user_cmd.command} : {user_cmd.cmd_data}")
             #print(user.name)
             return #user
+        except socket.error as e:
+            print(e)
+            return ("\nE" + str(e))
         except:
             print(f"Connection to Server failed")
             return False
