@@ -3,8 +3,9 @@ import threading
 from game import Command
 import time
 import pickle
+import queue
 
-def send_loop(n, send_queue, recv_queue):
+def send_loop(DEBUG, n, send_queue, recv_queue):
     send_lock = threading.Lock()
     print("Client send_loop Thread started")  #All Client processing happens within this loop   
     while True:
@@ -12,54 +13,73 @@ def send_loop(n, send_queue, recv_queue):
         if send_queue.qsize()>0:
             message = send_queue.get()
             n.send(message)
-            print(f"Sending: {str(message.command)}: {message.cmd_data}")
+            if DEBUG: print(f"Sending: {str(message.command)}: {message.cmd_data}")
             #To aid in debugging...
             #Actually this detail for gameplay should be somewhere else...
-            print("S", end='', flush=True)
+            if DEBUG: print("S", end='', flush=True)
             if message.command == "ACK":  #Ack'd a Server's command
-                print("K", end='', flush=True)
+                if DEBUG: print("K", end='', flush=True)
             elif message.command == "HBT":  
-                print("H", end='', flush=True)
+                if DEBUG: print("H", end='', flush=True)
             elif message.command == "JOIN":  
-                print("J", end='', flush=True)
+                if DEBUG: print("J", end='', flush=True)
             elif message.command == "NAME":  
-                print("N", end='', flush=True)
+                if DEBUG: print("N", end='', flush=True)
             elif message.command == "PLACE":  
-                print("P", end='', flush=True)
+                if DEBUG: print("P", end='', flush=True)
             elif message.command == "ATTACK":  
-                print("A", end='', flush=True)
+                if DEBUG: print("A", end='', flush=True)
             elif message.command == "MOVE":  
-                print("M", end='', flush=True)
+                if DEBUG: print("M", end='', flush=True)
             else:
-                print("C", end='', flush=True)
-            print(str(send_queue.qsize()), end='', flush=True)
-            print(str(recv_queue.qsize()), end='', flush=True)
-            print("s\n", end='', flush=True)
+                if DEBUG: print("C", end='', flush=True)
+            if DEBUG: 
+                print(str(send_queue.qsize()), end='', flush=True)
+                print(str(recv_queue.qsize()), end='', flush=True)
+                print("s\n", end='', flush=True)
             message = ""
         send_lock.release()
 
-def recv_loop(n, send_queue, recv_queue):
+def recv_loop(DEBUG, n, send_queue, recv_queue):
     recv_lock = threading.Lock()
     print("Client receive_loop Thread started")
     while True:
-        message = n.socket_recv()  #Get any inbound messages
+        try:
+            message = pickle.loads(n.client.recv(4096))  #Get any inbound messages
+            #data = pickle.loads(self.client.recv(2048))  #Receive ACK from Server
+        except socket.error as e:
+            print(e)
+            print("Socket error in recv_loop")
+            #Consider adding: user.connected = False
+            message = ""
+            break
+        except:
+            print("Exception in recv_loop")
+            #Agail consider: user.connected = False
+            message  = ""
+            break
+
         recv_lock.acquire()
         if type(message) == Command:  #Confirm whether msg is properly formed
             print(f"Receiving: {str(message.command)}: {message.cmd_data}")
-            print("R", end='', flush=True)
+            if DEBUG: print("R", end='', flush=True)
             if message.command == "ACK": #send_queue will be waiting for this (what's that mean?)
-                #ack_queue.put(message)
+                #ack_queue.put(message)  #Not really needed??!
                 pass
             else:
+                print(f"Putting {message.command} command onto recv_queue")
                 recv_queue.put(message) #Then push onto the incoming queue for processing
-                print("C", end='', flush=True)
+                if DEBUG: print("C", end='', flush=True)
         else:  #Else abandon the bad incoming message
-            print("R", end='', flush=True)
-            print("!", end='', flush=True)
-        print(str(send_queue.qsize()), end='', flush=True)
-        print(str(recv_queue.qsize()), end='', flush=True)
-        message = ""
-        print("r\n", end='', flush=True)
+            print(f"Bad Message: {str(message)}")
+            if DEBUG: 
+                print("R", end='', flush=True)
+                print("!", end='', flush=True)
+        if DEBUG: 
+            print(str(send_queue.qsize()), end='', flush=True)
+            print(str(recv_queue.qsize()), end='', flush=True)
+            print("r\n", end='', flush=True)
+        message = ""            
         recv_lock.release()
 
 

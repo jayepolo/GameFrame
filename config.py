@@ -1,2 +1,4 @@
-users = []
-send_queues = []
+users = {}
+send_queues = {}
+recv_queue = ""
+kill_threads = []

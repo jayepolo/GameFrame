@@ -40,23 +40,38 @@ class Network:
             print(f"Connection to Server failed")
             return False
 
-    def send(self, data):
+    def send(self, data):  #Client send function
         try:
             self.client.send(pickle.dumps(data))
-            return  #Send function should not Recv data!
+            return True #Send function should not Recv data!
         except socket.error as e:
             print(e)
+            return False
+        except:
+            print("Socket Send() failed")
+            return False
 
-    def socket_recv(self):
+    def socket_recv(self):   #Who uses this function??
         try:
             data = self.client.recv(2048)   #Wait for inbound msg
-            if data != b'':
-                message = pickle.loads(data)
-                return message
-            else:
-                print("Connection broken; Goodbye")
+            return True
         except socket.error as e:
             print(e)
+            return False
+        except:
+            print("Socket socket_recv() failed")
+            return False
+
+        if data != b'':
+            message = pickle.loads(data)
+            return message
+        else:
+            print("Connection broken; Goodbye")
+            #TODO Need to handle lost connection!!
+                #E.g. establish a reconenction process
+                #E.g. establish a FLAG to pause future network requests
+                #Be aware this could be due to "Server down or unavailable"!
+                    #Not just due to client code issue
 
 
 

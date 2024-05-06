@@ -9,6 +9,9 @@ import queue
 import time
 
 version = "0.1"
+DEBUG = False
+HBT = False
+
 width = 700
 height = 700
 win = pg.display.set_mode((width, height))
@@ -29,22 +32,25 @@ def main():
     n = Network() # Establish connection to Server
 
     #Start threads to send/receive Socket messages
-    recv_thread = threading.Thread(target=recv_loop, args=(n, send_queue, recv_queue), daemon=True).start() #args=(netconn,), 
-    send_thread = threading.Thread(target=send_loop, args=(n, send_queue, recv_queue), daemon=True).start() #args=(netconn,), 
+    recv_thread = threading.Thread(target=recv_loop, args=(DEBUG, n, send_queue, recv_queue), daemon=True).start() #args=(netconn,), 
+    send_thread = threading.Thread(target=send_loop, args=(DEBUG, n, send_queue, recv_queue), daemon=True).start() #args=(netconn,), 
 
     user = User()  #Generic user locally, ot be replaced by Server
     playing = False  #Server has accepted User to play (Needs implementing)
-    print(f"Sending JOIN request for userID: {user.userID}")
-    send_queue.put(Command(user.userID, "JOIN", user.userID + " join request"))  
+    
+    #Commenting out the JOIN command to make it manual
+    #print(f"Sending JOIN request for userID: {user.userID}")
+    #send_queue.put(Command(user.userID, "JOIN", user.userID + " join request"))  
+
+    #Create a thread to handle manual entry user input at command line
+    cli_thread = threading.Thread(target=cli_loop, args=(), daemon=True).start() #args=(netconn,), 
 
     HBT_time = time.time() + 5
-    print("Starting main() loop")  #All Client processing happens within this loop
     while run:  #Process certain game activities
         clock.tick(60)
         #game_events()      
-        process_queues()        
+        process_queues()
         HBT_time = network_check(user, HBT_time)
-
         try:
             #game_udate()
             pass
@@ -71,13 +77,13 @@ def main():
         pg.display.update()
 
 def network_check(user, HBT_time):
-    global send_lock
-    global send_queue
+    global send_lock, send_queue
     if time.time() >= HBT_time:
-        hbt_cmd = Command(user.userID, "HBT", "Ready to play")
-        send_lock.acquire()
-        send_queue.put(hbt_cmd)  #Or use the Send Queue to send the command...
-        send_lock.release()
+        if HBT: 
+            hbt_cmd = Command(user.userID, "HBT", "Ready to play")
+            send_lock.acquire()
+            send_queue.put(hbt_cmd)  #Or use the Send Queue to send the command...
+            send_lock.release()
         return HBT_time + 5
     else:
         return HBT_time        
@@ -91,9 +97,13 @@ def process_queues():
             send_queue.put(Command(pop_cmd.userID, "ACK", "Command " + pop_cmd.command + " received"))
                 #*** Additional processing of CMD messages & Gameplay ***
             if pop_cmd.command == "USER":
-                user = pop_cmd.cmd_data
-                pg.display.set_caption("Client - " + user.name)
+                print(f"Updating User: userID{pop_cmd.userID} name:{pop_cmd.cmd_data.name} connected:{pop_cmd.cmd_data.connected}")
+                user = pop_cmd.cmd_data  
+                pg.display.set_caption("Client - " + pop_cmd.cmd_data.name)
                 pg.display.update
+            elif pop_cmd.command == "JOIN":
+                print(f"Processing {pop_cmd.command} from {pop_cmd.userID}")
+                #Steps to handle this command
             elif pop_cmd.command == "ARMIES":
                 print(f"{pop_cmd.cmd_data} {pop_cmd.cmd_data.user.userID}")
                 # WHAT OBJECT STORES ARMIES TO BE PLACED?
@@ -113,5 +123,24 @@ def process_queues():
                 print("!", end='', flush=True)
             pop_cmd = ""
         proc_lock.release()
+
+def cli_loop():
+    global user, send_queue
+    
+    #TODO the user passed in here is not a reference.  
+    #This is not being updated when changes are made elsewhere
+    #Need to pass in user by reference so it is always current!!
+
+    print("Client cli_loop Thread started")  #Manually send commands using command line input
+    while True:
+        try:
+            get_cmd, get_cmd_data = input("Enter <command>,<cmd_data>: ").split(",")
+            #Confirm valid command inputs?
+                #E.g. could check that get_cmd is one of the enumerated command types
+            if get_cmd == "USER": #Override: can't type an object into CLI
+                get_cmd_data = user
+            send_queue.put(Command(user.userID, get_cmd, get_cmd_data))
+        except:
+            print("Invalid entry")
 
 main()

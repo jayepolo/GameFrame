@@ -6,7 +6,8 @@ class User:
     def __init__(self):
         self.userID = str(uuid.uuid1())[:8]
         self.name = "TEMP"
-        print(f"User: {self.userID} as {self.name}")
+        self.connected = False
+        #print(f"User: {self.userID} as {self.name}")
 
     def join(self, user):
         global send_queue, recv_queue, ack_queue
