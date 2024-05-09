@@ -31,7 +31,6 @@ class User:
             #print(f"{user_cmd.command} : {user_cmd.cmd_data}")
             #print(user.name)
 
-
             #EITHER: Loop here waiting for response, or use Queues for the Server response.
             #data = pickle.loads(self.client.recv(2048))  #Receive ACK from Server
             #print(f"{data.command}: {data.cmd_data}") 

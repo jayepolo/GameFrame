@@ -1,3 +1,4 @@
+import client_config
 import socket
 import threading
 from game import Command
@@ -18,24 +19,14 @@ class Network:
         try:
             print(f"Connecting to Server {self.addr}")
             self.client.connect(self.addr)  #Establish Socket connection to Server
-            print("Connected")
+            print("Connected!")
+            client_config.user.connected = True
             data = pickle.loads(self.client.recv(2048))  #Receive ACK from Server
-            print(f"{data.command}: {data.cmd_data}") 
-
-            #Passively waiting for server to send a user object.  
-            #Switch this to actively hanlde user request?
-            #Exist this connection routine
-            #Then back in the client setup code, Send a User Command to Server asking for user object object?
-            #Means I will not get the Server assigned user.name, unless of course I do not update it
-            
-            #user_cmd = pickle.loads(self.client.recv(2048))  #Receive USER object from Server
-            #user = user_cmd.cmd_data
-            #print(f"{user_cmd.command} : {user_cmd.cmd_data}")
-            #print(user.name)
+            print(f"{data.command}: {data.cmd_data}") #"Welcome to Cong! message..."
             return #user
         except socket.error as e:
             print(e)
-            return ("\nE" + str(e))
+            return ("Socket Exception at n.connect()" + str(e))
         except:
             print(f"Connection to Server failed")
             return False
